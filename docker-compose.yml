@@ -1,29 +1,37 @@
-services:
-  redis:
-    image: redis:latest
-    container_name: 3xui-shop-redis
-    restart: always
-    volumes:
-      - redis_data:/data
+version: "3.8"
 
-  bot:
+services:
+  3xui-shop:
+    container_name: 3xui-shop
+    # Если хочешь собирать из исходников репо:
     build: .
-    container_name: 3xui-shop-bot
-    volumes:
-      - ./app/data:/app/data
-      - ./plans.json:/app/data/plans.json
-      - ./app/locales:/app/locales
-      - ./app/logs:/app/logs
+    # Если хочешь использовать готовый образ (если автор его пушил) —
+    # можешь заменить build на image, например:
+    # image: ghcr.io/snoups/3xui-shop:latest
+    restart: unless-stopped
+
+    # Dokploy сам создаст network и подключит Traefik, 
+    # поэтому НИКАКОГО traefik-сервиса тут не пишем.
     env_file:
       - .env
-    stop_signal: SIGINT
-    restart: unless-stopped
-    command: sh -c " 
-      poetry run pybabel compile -d /app/locales -D bot && 
-      poetry run alembic -c /app/db/alembic.ini upgrade head && 
-      poetry run python /app/__main__.py"
-    depends_on:
-      - redis
 
-volumes:
-  redis_data:
+    # То, что тебе нужно будет хранить снаружи контейнера:
+    volumes:
+      # планы подписок
+      - ./plans.json:/app/plans.json:ro
+      # логи и база (если проект хранит их в ./data и ./logs — типичный вариант)
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+    # Открываем только порт приложения.
+    # В .env по умолчанию BOT_PORT=8080, под него и маппим.
+    ports:
+      - "8080:8080"
+
+    # На всякий случай — простая healthcheck
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
